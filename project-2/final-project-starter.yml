@@ -1,0 +1,421 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Project 2 - Deploy a high-availability web app using CloudFormation'
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: 'dev'
+    Description: 'The name of the environment'
+  ##############################################################################
+  # Server Parameters ##########################################################
+  ##############################################################################
+  InstanceType:
+    Type: String
+    Default: 't2.micro'
+    Description: 'The type of instance to use'
+  AMI:
+    Type: String
+    Default: 'ami-0f9e9e9e9e9e9e9e9'
+    Description: 'The AMI to use'
+  KeyName:
+    Type: String
+    Default: 'final-project'
+    Description: 'The name of the SSH key to use'
+  StorageSize:
+    Type: Number
+    Default: 20
+    Description: 'The size of the EBS volume to use'
+  MinInstanceCount:
+    Type: Number
+    Default: 2
+    Description: 'The minimum number of instances to maintain'
+  MaxInstanceCount:
+    Type: Number
+    Default: 4
+    Description: 'The maximum number of instances to maintain'
+  S3BucketName:
+    Type: String
+    Description: 'The name of the S3 bucket to use'
+  ##############################################################################
+  # Network Parameters #########################################################
+  ##############################################################################
+  VPCCidrBlock:
+    Type: String
+    Default: '10.0.0.0/16'
+    Description: 'The CIDR block to use for the VPC'
+  PublicSubnet1CidrBlock:
+    Type: String
+    Description: 'The CIDR block to use for the public subnet 1'
+  PublicSubnet2CidrBlock:
+    Type: String
+    Description: 'The CIDR block to use for the public subnet 2'
+  PrivateSubnet1CidrBlock:
+    Type: String
+    Description: 'The CIDR block to use for the private subnet 1'
+  PrivateSubnet2CidrBlock:
+    Type: String
+    Description: 'The CIDR block to use for the private subnet 2'
+Resources:
+  #############################################################################
+  # NETWORKING ################################################################
+  #############################################################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidrBlock
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-vpc"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref PublicSubnet1CidrBlock
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-1"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref PublicSubnet2CidrBlock
+      VpcId: !Ref VPC
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-2"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref PrivateSubnet1CidrBlock
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-private-subnet-1"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref PrivateSubnet2CidrBlock
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-private-subnet-2"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-internet-gateway'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-route-table'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName 
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+  NATGateway1EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway-1-eip'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  NATGateway2EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway-2-eip'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  NATGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway-1'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  NATGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway-2'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName 
+  PrivateSubnet1RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-subnet-1-route-table'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName 
+  PrivateSubnet1Route:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NATGateway1
+      RouteTableId: !Ref PrivateSubnet1RouteTable
+  PrivateSubnet2RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-subnet-2-route-table'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  PrivateSubnet2Route:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NATGateway2
+      RouteTableId: !Ref PrivateSubnet2RouteTable
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1RouteTable
+      SubnetId: !Ref PrivateSubnet1
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnet2RouteTable
+      SubnetId: !Ref PrivateSubnet2 
+  ##############################################################################
+  # Security Groups                                                            #
+  ##############################################################################
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub '${EnvironmentName}-lb-security-group'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          DestinationSecurityGroupId: !Ref WebAppSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-lb-security-group'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  WebAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub '${EnvironmentName}-web-app-security-group'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+        # - IpProtocol: tcp
+        #   FromPort: 22
+        #   ToPort: 22
+        #   CidrIp: '0.0.0.0/0'
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-web-app-security-group'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  ##############################################################################
+  # Load Balancer ##############################################################
+  ##############################################################################
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: 80
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-target-group'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      SecurityGroups:
+        - !Ref LBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-load-balancer'
+        - Key: EnvironmentName
+          Value: !Ref EnvironmentName
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref Listener
+      Priority: 1
+  ##################################################################################
+  # S3 Bucket Connection ###########################################################
+  ##################################################################################
+  S3ReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: S3ReadOnly
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:Get*
+                  - s3:List*
+                  - s3-object-lambda:Get*
+                  - s3-object-lambda:List*
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3BucketName}/WebApp/*'
+  ProfileWithRolesForOurApp:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Roles:
+        - !Ref S3ReadOnlyRole
+  ###############################################################################
+  # Auto Scaling Group ##########################################################
+  ###############################################################################
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref AMI
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref ProfileWithRolesForOurApp
+      SecurityGroups:
+        - !Ref WebAppSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref StorageSize
+            VolumeType: gp2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          # Get index.html
+          apt-get install awscli -y
+          aws s3 cp s3://${S3BucketName}/WebApp/index.html index.html
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub '${EnvironmentName}-auto-scaling-group'
+      HealthCheckGracePeriod: 60
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MaxSize: !Ref MaxInstanceCount
+      MinSize: !Ref MinInstanceCount
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      TargetGroupARNs:
+        - !Ref TargetGroup
+      Tags:
+        - Key: Name
+          PropagateAtLaunch: false
+          Value: !Sub '${EnvironmentName}-auto-scaling-group'
+        - Key: EnvironmentName
+          PropagateAtLaunch: true
+          Value: !Ref EnvironmentName
+Outputs: 
+  LoadBalancerURL:
+    Description: URL of the Load Balancer
+    Value: !Join 
+      - ''
+      - - http://
+        - !GetAtt LoadBalancer.DNSName

@@ -1,0 +1,54 @@
+[
+	{
+		"ParameterKey": "EnvironmentName",
+		"ParameterValue": "UdacityProject"
+	},
+	{
+		"ParameterKey": "InstanceType",
+		"ParameterValue": "t3.small"
+	},
+	{
+		"ParameterKey": "KeyName",
+		"ParameterValue": "udacity-project-2"
+	},
+	{
+		"ParameterKey": "AMI",
+		"ParameterValue": "ami-0729e439b6769d6ab"
+	},
+	{
+		"ParameterKey": "StorageSize",
+		"ParameterValue": "10"
+	},
+	{
+		"ParameterKey": "MinInstanceCount",
+		"ParameterValue": "2"
+	},
+	{
+		"ParameterKey": "MaxInstanceCount",
+		"ParameterValue": "3"
+	},
+	{
+		"ParameterKey": "VPCCidrBlock",
+		"ParameterValue": "10.0.0.0/16"
+	},
+	{
+		"ParameterKey": "PublicSubnet1CidrBlock",
+		"ParameterValue": "10.0.0.0/24"
+	},
+	{
+		"ParameterKey": "PublicSubnet2CidrBlock",
+		"ParameterValue": "10.0.1.0/24"
+	},
+	{
+		"ParameterKey": "PrivateSubnet1CidrBlock",
+		"ParameterValue": "10.0.2.0/24"
+	},
+	{
+		"ParameterKey": "PrivateSubnet2CidrBlock",
+		"ParameterValue": "10.0.3.0/24"
+	},
+	{
+		"ParameterKey": "S3BucketName",
+		"ParameterValue": "udacityproject-911534869505-bucket"
+	}
+]
